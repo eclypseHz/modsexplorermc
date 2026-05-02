@@ -13,6 +13,14 @@ app.use(express.static("public"));
 app.post("/download", async (req, res) => {
   const { mods, version, loader } = req.body;
 
+  if (!mods || !version || !loader) {
+    return res.status(400).send("Versão, loader e mods são obrigatórios");
+  }
+
+  if (!Array.isArray(mods) || mods.length === 0) {
+    return res.status(400).send("Nenhum mod selecionado");
+  }
+
   const tempDir = "./temp";
   const modsDir = path.join(tempDir, "mods");
 
@@ -21,51 +29,77 @@ app.post("/download", async (req, res) => {
 
   try {
     for (let mod of mods) {
-      const versions = await axios.get(
-        `https://api.modrinth.com/v2/project/${mod.id}/version`
-      );
+      if (!mod.id) {
+        console.warn("Mod sem ID:", mod);
+        continue;
+      }
 
-      const match = versions.data.find(v =>
-        v.game_versions.includes(version) &&
-        v.loaders.includes(loader)
-      );
+      try {
+        const versions = await axios.get(
+          `https://api.modrinth.com/v2/project/${mod.id}/version`
+        );
 
-      if (!match) continue; 
-      if (mod.project_type !== "mod") continue;
-      
-      const fileUrl = match.files[0].url;
-      const filePath = path.join(modsDir, match.files[0].filename);
+        const match = versions.data.find(v =>
+          v.game_versions.includes(version) &&
+          v.loaders.includes(loader)
+        );
 
-      const response = await axios({
-        url: fileUrl,
-        method: "GET",
-        responseType: "stream"
-      });
+        if (!match) {
+          console.log(`Nenhuma versão compatível para ${mod.title}`);
+          continue;
+        }
 
-      await new Promise((resolve) => {
-        const stream = fs.createWriteStream(filePath);
-        response.data.pipe(stream);
-        stream.on("finish", resolve);
-      });
+        if (!match.files || match.files.length === 0) {
+          console.log(`Nenhum arquivo para ${mod.title}`);
+          continue;
+        }
+
+        const fileUrl = match.files[0].url;
+        const filePath = path.join(modsDir, match.files[0].filename);
+
+        const response = await axios({
+          url: fileUrl,
+          method: "GET",
+          responseType: "stream"
+        });
+
+        await new Promise((resolve, reject) => {
+          const stream = fs.createWriteStream(filePath);
+          response.data.pipe(stream);
+          stream.on("finish", resolve);
+          stream.on("error", reject);
+        });
+
+        console.log(`Baixado: ${match.files[0].filename}`);
+      } catch (modErr) {
+        console.error(`Erro ao processar mod ${mod.title}:`, modErr.message);
+        continue;
+      }
     }
 
     const zipPath = path.join(tempDir, "modpack.zip");
     const output = fs.createWriteStream(zipPath);
-    const archive = archiver("zip");
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    archive.on("error", (err) => {
+      throw err;
+    });
 
     archive.pipe(output);
     archive.directory(modsDir, "mods");
     await archive.finalize();
 
     output.on("close", () => {
-      res.download(zipPath, "modpack.zip", () => {
+      res.download(zipPath, "modpack.zip", (err) => {
         fs.rmSync(tempDir, { recursive: true, force: true });
+        if (err) console.error("Erro ao enviar arquivo:", err);
       });
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Erro ao gerar modpack");
+    console.error("Erro ao gerar modpack:", err);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    res.status(500).send("Erro ao gerar modpack: " + err.message);
   }
 });
 
