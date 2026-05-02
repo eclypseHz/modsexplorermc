@@ -30,8 +30,9 @@ app.post("/download", async (req, res) => {
         v.loaders.includes(loader)
       );
 
-      if (!match) continue;
-
+      if (!match) continue; 
+      if (mod.project_type !== "mod") continue;
+      
       const fileUrl = match.files[0].url;
       const filePath = path.join(modsDir, match.files[0].filename);
 
