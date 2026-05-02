@@ -13,10 +13,29 @@ function renderModpack() {
 
 async function buscar() {
   const query = document.getElementById("search").value;
+  const version = document.getElementById("version").value;
+  const loader = document.getElementById("loader").value;
+  const category = document.getElementById("category").value;
 
-  const res = await fetch(
-    `https://api.modrinth.com/v2/search?query=${query}&limit=10`
-  );
+  let facets = [
+    ["project_type:mod"]
+  ];
+
+  if (category) {
+    facets = [[`project_type:${category}`]];
+  }
+
+  if (version) {
+    facets.push([`versions:${version}`]);
+  }
+
+  if (loader) {
+    facets.push([`categories:${loader}`]);
+  }
+
+  const url = `https://api.modrinth.com/v2/search?query=${query}&facets=${encodeURIComponent(JSON.stringify(facets))}`;
+
+  const res = await fetch(url);
   const data = await res.json();
 
   const container = document.getElementById("results");
