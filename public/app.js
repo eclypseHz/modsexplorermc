@@ -62,4 +62,22 @@ async function baixar() {
   a.click();
 }
 
+async function carregarVersoes() {
+  const res = await fetch("https://api.modrinth.com/v2/tag/game_version");
+  const versoes = await res.json();
+
+  const select = document.getElementById("version");
+  select.innerHTML = "";
+
+  versoes
+    .filter(v => v.version_type === "release")
+    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
+    .forEach(v => {
+      const option = document.createElement("option");
+      option.value = v.version;
+      option.textContent = v.version;
+      select.appendChild(option);
+    });
+}
+carregarVersoes();
 renderModpack();
