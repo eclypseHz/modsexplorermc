@@ -22,7 +22,7 @@ async function buscar() {
   ];
 
   if (category) {
-    facets = [[`project_type:${category}`]];
+    facets[0] = [`project_type:${category}`];
   }
 
   if (version) {
@@ -30,73 +30,111 @@ async function buscar() {
   }
 
   if (loader) {
-    facets.push([`categories:${loader}`]);
+    facets.push([`loaders:${loader}`]);
   }
 
   const url = `https://api.modrinth.com/v2/search?query=${query}&facets=${encodeURIComponent(JSON.stringify(facets))}`;
 
-  const res = await fetch(url);
-  const data = await res.json();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Erro na busca");
+    
+    const data = await res.json();
 
-  const container = document.getElementById("results");
-  container.innerHTML = "";
+    const container = document.getElementById("results");
+    container.innerHTML = "";
 
-  data.hits.forEach(mod => {
-    const div = document.createElement("div");
+    if (data.hits.length === 0) {
+      container.innerHTML = "<p>Nenhum mod encontrado</p>";
+      return;
+    }
 
-    div.innerHTML = `
-      <b>${mod.title}</b>
-      <p>${mod.description}</p>
-      <button>Adicionar</button>
-    `;
+    data.hits.forEach(mod => {
+      const div = document.createElement("div");
 
-    div.querySelector("button").onclick = () => {
-      modpack.push(mod);
-      localStorage.setItem("modpack", JSON.stringify(modpack));
-      renderModpack();
-    };
+      div.innerHTML = `
+        <b>${mod.title}</b>
+        <p>${mod.description}</p>
+        <button>Adicionar</button>
+      `;
 
-    container.appendChild(div);
-  });
+      div.querySelector("button").onclick = () => {
+        if (!modpack.find(m => m.id === mod.id)) {
+          modpack.push(mod);
+          localStorage.setItem("modpack", JSON.stringify(modpack));
+          renderModpack();
+        } else {
+          alert("Este mod já foi adicionado");
+        }
+      };
+
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error(err);
+    document.getElementById("results").innerHTML = "<p style='color: red;'>Erro ao buscar mods</p>";
+  }
 }
 
 async function baixar() {
   const version = document.getElementById("version").value;
   const loader = document.getElementById("loader").value;
 
-  const res = await fetch("/download", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ modpack, version, loader })
-  });
+  if (!version || !loader) {
+    alert("Selecione versão e loader");
+    return;
+  }
 
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
+  if (modpack.length === 0) {
+    alert("Adicione mods ao modpack primeiro");
+    return;
+  }
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "modpack.zip";
-  a.click();
+  try {
+    const res = await fetch("/download", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ modpack, version, loader })
+    });
+
+    if (!res.ok) throw new Error("Erro ao baixar");
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modpack.zip";
+    a.click();
+  } catch (err) {
+    console.error(err);
+    alert("Erro ao baixar o modpack");
+  }
 }
 
 async function carregarVersoes() {
-  const res = await fetch("https://api.modrinth.com/v2/tag/game_version");
-  const versoes = await res.json();
+  try {
+    const res = await fetch("https://api.modrinth.com/v2/tag/game_version");
+    const versoes = await res.json();
 
-  const select = document.getElementById("version");
-  select.innerHTML = "";
+    const select = document.getElementById("version");
+    select.innerHTML = "<option value=''>Selecione uma versão</option>";
 
-  versoes
-    .filter(v => v.version_type === "release")
-    .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
-    .forEach(v => {
-      const option = document.createElement("option");
-      option.value = v.version;
-      option.textContent = v.version;
-      select.appendChild(option);
-    });
+    versoes
+      .filter(v => v.version_type === "release")
+      .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
+      .forEach(v => {
+        const option = document.createElement("option");
+        option.value = v.version;
+        option.textContent = v.version;
+        select.appendChild(option);
+      });
+  } catch (err) {
+    console.error(err);
+  }
 }
+
 carregarVersoes();
 renderModpack();
